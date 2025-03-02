@@ -8,13 +8,14 @@ let particles = [];
 let powerups = [];
 let score = 0;
 let lives = 3;
-let gameState = 'start'; // start, play, gameOver
+let gameState = 'start'; // start, play, gameOver, leaderboard, nameInput
 let enemySpawnRate = 120; // Frames between enemy spawns
 let enemySpawnCounter = 0;
 let powerupSpawnRate = 500; // Frames between powerup spawns
 let powerupSpawnCounter = 0;
 let level = 1;
 let levelUpScore = 500;
+let highScoreButton; // Button for viewing high scores
 
 // Setup function - runs once at the beginning
 function setup() {
@@ -25,6 +26,13 @@ function setup() {
   // Create stars for background - increased number
   for (let i = 0; i < 200; i++) {
     stars.push(new Star());
+  }
+  
+  // Initialize Supabase connection
+  try {
+    initSupabase();
+  } catch (error) {
+    console.error('Failed to initialize Supabase:', error);
   }
 }
 
@@ -45,11 +53,61 @@ function draw() {
     updateGame();
   } else if (gameState === 'gameOver') {
     showGameOverScreen();
+  } else if (gameState === 'nameInput') {
+    // Show the game in the background
+    updateGameVisuals();
+    // Show name input overlay
+    displayNameInput();
+  } else if (gameState === 'leaderboard') {
+    // Show the game in the background
+    updateGameVisuals();
+    // Show leaderboard overlay
+    displayLeaderboard();
   }
+}
+
+// Only update visuals without game logic (for background during overlays)
+function updateGameVisuals() {
+  // Update and show player
+  player.show();
+  
+  // Show bullets
+  for (let bullet of bullets) {
+    bullet.show();
+  }
+  
+  // Show enemies
+  for (let enemy of enemies) {
+    enemy.show();
+  }
+  
+  // Show powerups
+  for (let powerup of powerups) {
+    powerup.show();
+  }
+  
+  // Update and show particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].show();
+    
+    // Remove particles that fade out
+    if (particles[i].isDead()) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  // Display score, lives, and level
+  displayHUD();
 }
 
 // Handle key presses
 function keyPressed() {
+  if (gameState === 'nameInput') {
+    handleKeyTyping();
+    return;
+  }
+  
   if (key === ' ' || keyCode === 32) { // Space bar (using both key and keyCode for better compatibility)
     if (gameState === 'play') {
       player.shoot();
@@ -58,15 +116,44 @@ function keyPressed() {
       gameState = 'play';
     }
   }
+  
+  // 'L' key to view leaderboard
+  if ((key === 'l' || key === 'L') && (gameState === 'start' || gameState === 'gameOver')) {
+    gameState = 'leaderboard';
+  }
 }
 
 // Add mousePressed function to also allow starting with mouse clicks
 function mousePressed() {
-  if (gameState === 'start' || gameState === 'gameOver') {
+  // Check for leaderboard UI interactions first
+  if (gameState === 'leaderboard' || gameState === 'nameInput') {
+    if (handleLeaderboardClicks()) {
+      return;
+    }
+  }
+  
+  if (gameState === 'start') {
+    // Check if high score button was clicked
+    if (mouseX > width/2 - 100 && mouseX < width/2 + 100 && 
+        mouseY > height/2 + 150 && mouseY < height/2 + 190) {
+      gameState = 'leaderboard';
+      return;
+    }
+    
     resetGame();
     gameState = 'play';
   } else if (gameState === 'play') {
     player.shoot();
+  } else if (gameState === 'gameOver') {
+    // Check if high score button was clicked
+    if (mouseX > width/2 - 100 && mouseX < width/2 + 100 && 
+        mouseY > height/2 + 100 && mouseY < height/2 + 140) {
+      gameState = 'leaderboard';
+      return;
+    }
+    
+    resetGame();
+    gameState = 'play';
   }
 }
 
@@ -214,6 +301,14 @@ function updateGame() {
             particles.push(new Particle(player.pos.x, player.pos.y));
           }
           gameState = 'gameOver';
+          
+          // Prompt for name input if score is significant
+          if (score > 100) {
+            // Delay name input prompt slightly to show game over screen
+            setTimeout(() => {
+              gameState = 'nameInput';
+            }, 2000);
+          }
         }
       }
       
@@ -252,6 +347,14 @@ function updateGame() {
         
         if (lives <= 0) {
           gameState = 'gameOver';
+          
+          // Prompt for name input if score is significant
+          if (score > 100) {
+            // Delay name input prompt slightly to show game over screen
+            setTimeout(() => {
+              gameState = 'nameInput';
+            }, 2000);
+          }
         }
       }
       continue;
@@ -410,6 +513,13 @@ function showStartScreen() {
   text("Use arrow keys to move", width/2, height/2);
   text("Press SPACE to shoot", width/2, height/2 + 40);
   text("Press SPACE to start", width/2, height/2 + 100);
+  
+  // Add high scores button
+  fill(100, 100, 200);
+  rect(width/2 - 100, height/2 + 150, 200, 40, 10);
+  fill(255);
+  textSize(20);
+  text("HIGH SCORES", width/2, height/2 + 175);
 }
 
 // Show game over screen
@@ -422,6 +532,13 @@ function showGameOverScreen() {
   textSize(24);
   text(`Final Score: ${score}`, width/2, height/2);
   text("Press SPACE to play again", width/2, height/2 + 60);
+  
+  // Add high scores button
+  fill(100, 100, 200);
+  rect(width/2 - 100, height/2 + 100, 200, 40, 10);
+  fill(255);
+  textSize(20);
+  text("HIGH SCORES", width/2, height/2 + 125);
 }
 
 // Player class
